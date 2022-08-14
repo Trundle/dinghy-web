@@ -141,6 +141,9 @@ def _parse_projects(urls):
 
 
 def main():
+    if "GITHUB_TOKEN_FILE" in os.environ:
+        with open(os.environ["GITHUB_TOKEN_FILE"]) as token_file:
+            os.environ["GITHUB_TOKEN"] = token_file.read().strip()
     if "GITHUB_TOKEN" not in os.environ:
         print("[FATAL] Environment variable GITHUB_TOKEN not set", file=sys.stderr)
         sys.exit(1)
