@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dinghy-web"
+version = "2022.8.1"
+description = "dinghy as a service"
+authors = [{name = "Andreas Stührk", email = "andy@hammerhartes.de"}]
+readme = "README.rst"
+license = {file = "LICENSE"}
+dependencies = [
+    "aiohttp",
+    "chameleon",
+    "dinghy",
+]
+
+[project.scripts]
+dinghy-web = "dinghy_web.__main__:main"
+
+[project.urls]
+Home = "https://github.com/Trundle/dinghy-web"

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html xmlns:tal="http://xml.zope.org/namespaces/tal">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Your daily GitHub digest</title>
+    <style>
+        body {
+            margin: auto;
+            max-width: 60em;
+        }
+
+        ul {
+            line-height: 1.5rem;
+            list-style-type: none;
+        }
+
+        a {
+            color: black;
+        }
+    </style>
+</head>
+<body>
+<ul>
+    <li tal:repeat="project projects">
+        <h2>${project.name}</h2>
+        <ul>
+            <li><a href="${project.url(request, '1 week')}">Last 7 days</a></li>
+            <li><a href="${project.url(request, '0 day')}">Today</a></li>
+            <li><a href="${project.url(request, '1 day')}">Yesterday</a></li>
+            <li><a href="${project.url(request, '2 days')}">Two days ago</a></li>
+        </ul>
+    </li>
+</ul>
+</body>
+</html>
