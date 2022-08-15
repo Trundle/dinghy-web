@@ -17,6 +17,12 @@
         a {
             color: black;
         }
+
+        footer {
+            color: #888;
+            font-style: italic;
+            margin-top: 3em;
+        }
     </style>
 </head>
 <body>
@@ -31,5 +37,10 @@
         </ul>
     </li>
 </ul>
+
+<footer tal:condition="resource_limit">
+    Remaining rate limit: ${resource_limit['remaining']} of ${resource_limit['limit']},
+    next reset at ${resource_limit['reset_when']}
+</footer>
 </body>
 </html>

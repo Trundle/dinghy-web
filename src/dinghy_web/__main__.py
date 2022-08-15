@@ -10,6 +10,7 @@ from pathlib import Path
 import dinghy.digest
 from aiohttp import web
 from chameleon import PageTemplateLoader
+from dinghy.graphql_helpers import GraphqlHelper
 from dinghy.helpers import parse_timedelta
 from dinghy.jinja_helpers import render_jinja
 
@@ -110,6 +111,7 @@ def render(page_name):
 def handle_root(request):
     return {
         "projects": sorted(request.app["projects"].values(), key=attrgetter("name")),
+        "resource_limit": GraphqlHelper.last_rate_limit(),
     }
 
 
