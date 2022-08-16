@@ -4,10 +4,13 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import wraps
-from operator import attrgetter, itemgetter
+from itertools import chain
+from operator import itemgetter
 from pathlib import Path
+from typing import Any
 
 import dinghy.digest
+import yaml
 from aiohttp import web
 from chameleon import PageTemplateLoader
 from dinghy.graphql_helpers import GraphqlHelper
@@ -18,15 +21,18 @@ from dinghy.jinja_helpers import render_jinja
 routes = web.RouteTableDef()
 
 
-class _ProjectDigestStore:
-    def __init__(self, repo, max_look_back, refresh_after=timedelta(minutes=30)):
-        self._repo = repo
+class _DigestItemStore:
+    def __init__(self, options, max_look_back, refresh_after=timedelta(minutes=30)):
+        options.pop("since", None)
+        options.pop("digest", None)
+        self._options = options
+        self._items = options.pop("items")
         self._max_look_back = max_look_back
         self._refresh_after = refresh_after
         self._last_entry = datetime.today() - 2 * max_look_back
         self._lock = asyncio.Lock()
-        self._digest = {}
-        self._entries = []
+        self._digests = [{}] * len(self._items)
+        self._entries = [[]] * len(self._items)
 
     async def get(self, since):
         async with self._lock:
@@ -38,21 +44,31 @@ class _ProjectDigestStore:
             to_datetime = lambda value: datetime.fromisoformat(
                 value.replace("Z", "+00:00")
             ).replace(tzinfo=None)
-            entries = [
-                entry
-                for entry in self._entries
-                if to_datetime(entry["updatedAt"]) > since
-            ]
-            return dict(self._digest, entries=entries)
+            results = []
+            for (digest, entries) in zip(self._digests, self._entries):
+                entries = [
+                    entry
+                    for entry in entries
+                    if to_datetime(entry["updatedAt"]) > since
+                ]
+                results.append(dict(digest, entries=entries))
+            return results
 
     async def _refresh(self, since):
         self._last_entry = datetime.utcnow()
-        digester = dinghy.digest.Digester(since=since, options={})
+
+        digester = dinghy.digest.Digester(since=since, options=self._options)
         digester.prepare()
-        result = await dinghy.digest.coro_from_item(digester, self._repo)
-        self._digest = {k: v for (k, v) in result.items() if k != "entries"}
-        if entries := result["entries"]:
-            self._entries = self._merge_entries(self._entries, entries)
+
+        coros = []
+        for item in self._items:
+            coros.append(dinghy.digest.coro_from_item(digester, item))
+        results = await asyncio.gather(*coros)
+
+        for (i, result) in enumerate(results):
+            self._digests[i] = {k: v for (k, v) in result.items() if k != "entries"}
+            if entries := result["entries"]:
+                self._entries[i] = self._merge_entries(self._entries[i], entries)
 
     @staticmethod
     def _merge_entries(existing, new):
@@ -62,27 +78,32 @@ class _ProjectDigestStore:
         return sorted(result.values(), key=itemgetter("updatedAt"))
 
 
-class DigestStore:
+class ItemStore:
     def __init__(self, max_look_back=timedelta(days=7)):
         self._max_look_back = max_look_back
         self._stores = {}
 
-    async def get(self, project, since):
-        if project.name not in self._stores:
-            self._stores[project.name] = _ProjectDigestStore(
-                project.repo, self._max_look_back
+    async def get(self, digest, since):
+        if digest.filename not in self._stores:
+            self._stores[digest.filename] = _DigestItemStore(
+                digest.options, self._max_look_back
             )
-        store = self._stores[project.name]
+        store = self._stores[digest.filename]
         return await store.get(since)
 
 
 @dataclass
-class Project:
-    name: str
-    repo: str
+class Digest:
+    title: str
+    filename: str
+    options: dict[str, Any]
 
     def url(self, request, since: str):
-        return request.app.router["digest"].url_for(project=self.name, since=since)
+        return (
+            request.app.router["digest"]
+            .url_for(filename=self.filename)
+            .with_query({"since": since})
+        )
 
 
 def utctoday():
@@ -110,21 +131,21 @@ def render(page_name):
 @render("index.html")
 def handle_root(request):
     return {
-        "projects": sorted(request.app["projects"].values(), key=attrgetter("name")),
+        "digests": request.app["digests"].values(),
         "resource_limit": GraphqlHelper.last_rate_limit(),
     }
 
 
-@routes.get("/{project}/{since}", name="digest")
+@routes.get("/{filename}", name="digest")
 async def handle_project(request):
-    project = request.app["projects"].get(request.match_info["project"])
+    project = request.app["digests"].get(request.match_info["filename"])
     if project is None:
         raise web.HTTPNotFound()
-    since = utctoday() - parse_timedelta(request.match_info["since"])
-    digest = await request.app["digest_store"].get(project, since)
+    since = utctoday() - parse_timedelta(request.query["since"])
+    results = await request.app["item_store"].get(project, since)
     page = render_jinja(
         "digest.html.j2",
-        results=[digest],
+        results=results,
         since=since,
         now=datetime.now(),
         __version__=dinghy.__version__,
@@ -133,13 +154,22 @@ async def handle_project(request):
 
 
 def _parse_projects(urls):
-    projects = {}
     for url in urls:
         name = url.rsplit("/", 1)[-1]
         if "://" not in url:
             url = "https://github.com/" + url
-        projects[name] = Project(name=name, repo=url)
-    return projects
+        yield Digest(title=name, filename=name + ".html", options={"items": [url]})
+
+
+def _load_dinghy_config(path):
+    with open(path) as config_file:
+        config = yaml.safe_load(config_file)
+
+    defaults = config.get("defaults", {})
+    for spec in config.get("digests", []):
+        filename = spec.get("digest")
+        title = spec.get("title") or filename
+        yield Digest(title=title, filename=filename, options={**defaults, **spec})
 
 
 def main():
@@ -150,11 +180,15 @@ def main():
         print("[FATAL] Environment variable GITHUB_TOKEN not set", file=sys.stderr)
         sys.exit(1)
 
+    if len(sys.argv) == 2 and Path(sys.argv[1]).exists():
+        digests = _load_dinghy_config(sys.argv[1])
+    else:
+        digests = _parse_projects(sys.argv[1:])
+    digests = chain(_parse_projects(os.environ.get("PROJECTS", "").split()), digests)
+
     app = web.Application()
-    app["projects"] = _parse_projects(
-        os.environ.get("PROJECTS", "").split() + sys.argv[1:]
-    )
-    app["digest_store"] = DigestStore()
+    app["digests"] = {digest.filename: digest for digest in digests}
+    app["item_store"] = ItemStore()
     app["template_loader"] = PageTemplateLoader(
         str(Path(__file__).parent / "templates")
     )

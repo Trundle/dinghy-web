@@ -24,11 +24,33 @@
             '';
           };
 
+          digests = mkOption {
+            type = types.listOf types.attrs;
+            description = mdDoc ''
+              Digest configurations in Nix format.
+
+              See also [dinghy's README](https://github.com/nedbat/dinghy#configuration).
+            '';
+            default = [ ];
+            example = literalExpression ''
+              [
+                {
+                  digest = "dinghy-web.html";
+                  title = "Trundle/dinghy-web";
+                  items = [
+                    "https://github.com/Trundle/dinghy-web"
+                  ];
+                }
+              ]
+            '';
+          };
+
           projects = mkOption {
             type = types.listOf types.str;
             description = mdDoc ''
-              The GitHub projects to watch.
+              The GitHub projects to watch, in addition to the digests configured in `digest`.
             '';
+            default = [ ];
             example = [ "Trundle/dinghy-web" ];
           };
 
@@ -63,10 +85,12 @@
               else { GITHUB_TOKEN_FILE = cfg.githubToken; }
             );
 
-            serviceConfig = {
-              ExecStart = "${cfg.package}/bin/dinghy-web";
-              DynamicUser = true;
-            };
+            serviceConfig =
+              let configFile = builtins.toFile "dinghy.yaml" (builtins.toJSON { digests = cfg.digests; });
+              in {
+                ExecStart = "${cfg.package}/bin/dinghy-web ${configFile}";
+                DynamicUser = true;
+              };
           };
         };
       };

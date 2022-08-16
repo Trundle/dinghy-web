@@ -27,13 +27,13 @@
 </head>
 <body>
 <ul>
-    <li tal:repeat="project projects">
-        <h2>${project.name}</h2>
+    <li tal:repeat="digest digests">
+        <h2>${digest.title}</h2>
         <ul>
-            <li><a href="${project.url(request, '1 week')}">Last 7 days</a></li>
-            <li><a href="${project.url(request, '0 day')}">Today</a></li>
-            <li><a href="${project.url(request, '1 day')}">Yesterday</a></li>
-            <li><a href="${project.url(request, '2 days')}">Two days ago</a></li>
+            <li><a href="${digest.url(request, '1 week')}">Last 7 days</a></li>
+            <li><a href="${digest.url(request, '0 day')}">Today</a></li>
+            <li><a href="${digest.url(request, '1 day')}">Yesterday</a></li>
+            <li><a href="${digest.url(request, '2 days')}">Two days ago</a></li>
         </ul>
     </li>
 </ul>
