@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -16,6 +17,9 @@ from chameleon import PageTemplateLoader
 from dinghy.graphql_helpers import GraphqlHelper
 from dinghy.helpers import parse_timedelta
 from dinghy.jinja_helpers import render_jinja
+
+
+_BACK_LINKS_PLACES = re.compile(r'</h1>|</ul>(?=\s+<p class="footer")')
 
 
 routes = web.RouteTableDef()
@@ -127,7 +131,7 @@ def render(page_name):
     return decorator
 
 
-@routes.get("/")
+@routes.get("/", name="root")
 @render("index.html")
 def handle_root(request):
     return {
@@ -150,7 +154,14 @@ async def handle_project(request):
         now=datetime.now(),
         __version__=dinghy.__version__,
     )
+    page = _add_back_links(page, request.app.router["root"].url_for())
     return web.Response(text=page, content_type="text/html")
+
+
+def _add_back_links(page: str, back_url: str):
+    return _BACK_LINKS_PLACES.sub(
+        rf'\g<0><a href="{back_url}">← Back to index</a>', page
+    )
 
 
 def _parse_projects(urls):
