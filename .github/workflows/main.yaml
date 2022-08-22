@@ -1,0 +1,25 @@
+name: CI
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: 'Build'
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: 'Checkout source'
+        uses: actions/checkout@v3
+      - name: 'Install Nix Flakes'
+        uses: cachix/install-nix-action@v17
+      - name: 'Build default package'
+        run: nix build -L .
