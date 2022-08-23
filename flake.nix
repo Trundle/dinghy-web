@@ -82,14 +82,27 @@
             } // (
               if (strings.hasPrefix "ghp_" cfg.githubToken)
               then { GITHUB_TOKEN = cfg.githubToken; }
-              else { GITHUB_TOKEN_FILE = cfg.githubToken; }
+              else { GITHUB_TOKEN_FILE = "%t/%N/github-token"; }
             );
 
             serviceConfig =
-              let configFile = builtins.toFile "dinghy.yaml" (builtins.toJSON { digests = cfg.digests; });
-              in {
+              let
+                configFile = builtins.toFile "dinghy.yaml" (builtins.toJSON { digests = cfg.digests; });
+                prepareTokenFile = pkgs.writeShellScript "dinghy-web-prepare-token" ''
+                  [ -n "''${GITHUB_TOKEN_FILE}" ] \
+                  && install \
+                    -o `stat -c '%U' "''${RUNTIME_DIRECTORY}"` \
+                    -m 0400 \
+                    ${escapeShellArg cfg.githubToken} \
+                    "''${RUNTIME_DIRECTORY}/github-token" \
+                  || true
+                '';
+              in
+              {
+                ExecStartPre = "!" + prepareTokenFile;
                 ExecStart = "${cfg.package}/bin/dinghy-web ${configFile}";
                 DynamicUser = true;
+                RuntimeDirectory = "%N";
               };
           };
         };
