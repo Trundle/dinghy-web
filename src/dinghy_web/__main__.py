@@ -79,7 +79,7 @@ class _DigestItemStore:
         result = {entry["id"]: entry for entry in existing}
         for entry in new:
             result[entry["id"]] = entry
-        return sorted(result.values(), key=itemgetter("updatedAt"))
+        return sorted(result.values(), key=itemgetter("updatedAt"), reverse=True)
 
 
 class ItemStore:
